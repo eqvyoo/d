@@ -1,0 +1,104 @@
+structure A = Absyn
+structure S = Symbol
+structure ErrorMsg = ErrorMsg
+
+%%
+
+%pos ErrorMsg.pos
+%verbose
+%eop EOF
+%noshift EOF
+%name Fun
+%term EOF
+| INT of int
+| ID of string
+| COMMA | COLON | SEMICOLON | LPAREN | RPAREN | LBRACK | RBRACK
+| LBRACE | RBRACE | DOT | BAR
+| PLUS | MINUS | TIMES | DIVIDE | EQ | NEQ | LT | LE | GT | GE
+| AND | OR | ASSIGN | NOT
+| ARRAY | IF | THEN | ELSE | WHILE | FOR | TO | DO | LET | IN | END | OF
+| BREAK | NIL
+| FUNCTION | VAR | TYPE
+
+%nonterm tp of A.tp | tps of A.tp list
+
+%right ARROW
+%left OR
+%left AND
+%nonassoc EQ NEQ LT LE GT GE
+%left PLUS MINUS
+%left TIMES DIVIDE
+%nonassoc UMINUS
+%pos int
+%verbose
+%start program
+%eop EOF
+%noshift EOF
+
+
+%keyword WHILE To FOR BREAK LET IN END FUNCTION VAR TYPE ARRAY IF THEN ELSE
+        DO OF NIL
+
+%prefer THEN ELSE LPAREN
+
+%value ID (S.symbol)
+%value INT (int)
+%value STRING (string)
+
+%%
+
+program: fundec_list EOF                (A.Prog $1)
+
+fundec_list: fundec_list fundec         ($1@[$2])
+            | fundec                    ([$1])
+
+fundec: FUNCTION ID LPAREN arg_list_opt RPAREN COLON tp EQ exp SEMICOLON
+                                        (A.Fundec(($2, $4, $7, $9, $11)))
+
+arg_list_opt:                           (NONE)
+             | arg_list                 (SOME $1)
+
+arg_list: arg_list COMMA ID COLON tp    ($1 @ [A.Pos(($3left,$5right), $3, $5)])
+         | ID COLON tp                  ([(A.Pos(($1left,$3right), $1, $3))])
+
+tp: ID                                  (A.Idtp(S.toString $1))
+   | ID LBRACK RBRACK                   (A.Arraytp(S.toString $1))
+   | tp ARROW tp                        (A.Arrowtp($1, $3))
+
+exp: INT                                (A.Pos(($1left,$1right), A.Int $1))
+    | ID                                (A.Pos(($1left,$1right), A.Id(S.toString $1)))
+    | exp PLUS exp                      (A.Pos((exp1left,exp2right), A.Op(A.Add, [$1, $3])))
+    | exp MINUS exp                     (A.Pos((exp1left,exp2right), A.Op(A.Sub, [$1, $3])))
+    | exp TIMES exp                     (A.Pos((exp1left,exp2right), A.Op(A.Mul, [$1, $3])))
+    | exp DIVIDE exp                    (A.Pos((exp1left,exp2right), A.Op(A.Div, [$1, $3])))
+    | exp EQ exp                        (A.Pos((exp1left,exp2right), A.Op(A.Eq, [$1, $3])))
+    | exp NEQ exp                       (A.Pos((exp1left,exp2right), A.Op(A.Neq, [$1, $3])))
+    | exp LT exp                        (A.Pos((exp1left,exp2right), A.Op(A.Lt, [$1, $3])))
+    | exp LE exp                        (A.Pos((exp1left,exp2right), A.Op(A.Le, [$1, $3])))
+    | exp GT exp                        (A.Pos((exp1left,exp2right), A.Op(A.Gt, [$1, $3])))
+    | exp GE exp                        (A.Pos((exp1left,exp2right), A.Op(A.Ge, [$1, $3])))
+    | exp AND exp                       (A.Pos((exp1left,exp2right), A.Op(A.And, [$1, $3])))
+    | exp OR exp                        (A.Pos((exp1left,exp2right), A.Op(A.Or, [$1, $3])))
+    | NOT exp                           (A.Pos(($1left,$2right), A.Op(A.Not, [$2])))
+    | ID LPAREN exp_list RPAREN         (A.Pos(($1left,RPARENright), A.Call($1, $3))
+    | LET decl_list IN exp END          (A.Pos((LETleft,ENDright), A.Let($2, $4)))
+    | IF exp THEN exp ELSE exp          (A.Pos((IFleft,ELSEright), A.If($2, $4, $6)))
+    | WHILE exp DO exp                  (A.Pos((WHILEleft,DOright), A.While($2, $4)))
+    | LBRACE exp_list RBRACE            (A.Pos((LBRACEleft,RBRACEright), A.Tuple $2))
+
+exp_list: exp                           ([$1])
+         | exp_list COMMA exp           ($1@[$3])
+
+decl_list: decl                         ([$1])
+         | decl_list SEMICOLON decl     ($1@[$3])
+
+decl: VAR ID COLON tp ASSIGN exp        (A.Pos(($2left,$6right), A.Let(A.Pos(($2left,$2right), $2), $6)))
+
+
+%%
+
+fun reset s = ErrorMsg.reset s
+
+exp: exp LPAREN exp RPAREN       (A.Pos((exp1left,RPARENright), A.Call (exp1,exp2)))
+
+
